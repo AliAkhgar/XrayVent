@@ -1,0 +1,16 @@
+{
+  "name": "xray-socks-manager",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "kill":"pkill -x 'xray_user'"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "blessed-contrib": "^4.11.0",
+    "dotenv": "^17.2.3"
+  }
+}
