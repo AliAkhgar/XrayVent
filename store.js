@@ -58,4 +58,21 @@ function normalizeUser(d) {
   };
 }
 
-module.exports = { loadState, saveState, upsertUser, deleteUser };
+function loadSettings(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (e) {
+    return {
+      tunnelOrder: ['tun0-out', 'failover-out-1', 'failover-out-2', 'failover-out-3'],
+      failoverEnabled: true,
+      requiredStableChecks: 2
+    };
+  }
+}
+
+function saveSettings(filePath, settings) {
+  fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
+}
+
+module.exports = { loadState, saveState, upsertUser, deleteUser, loadSettings, saveSettings };

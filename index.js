@@ -8,13 +8,19 @@ const { execSync } = require('child_process');
 const util = require('util');
 const execAsync = util.promisify(require('child_process').exec);
 
-const { loadState, saveState, upsertUser, deleteUser } = require('./store');
+const { loadState, saveState, upsertUser, deleteUser, loadSettings, saveSettings } = require('./store');
 const { buildXrayConfig, writeJsonPretty, startXray, stopXray, getGlobalStats } = require('./xray');
 const { createTui } = require('./tui');
+const { createWebServer } = require('./web/server');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const USERS_PATH = path.join(DATA_DIR, 'users.json');
 const XRAY_CONFIG_PATH = path.join(DATA_DIR, 'xray.generated.json');
+const SETTINGS_PATH = path.join(DATA_DIR, 'settings.json');
+
+const WEB_PORT = parseInt(process.env.WEB_PORT || '3000', 10);
+const WEB_ADMIN_USER = process.env.WEB_ADMIN_USER || 'admin';
+const WEB_ADMIN_PASS = process.env.WEB_ADMIN_PASS || 'admin';
 
 const XRAY_BIN = process.env.XRAY_BIN || '/root/goduser/xray_user';
 const SOCKS_IN_PORT = parseInt(process.env.SOCKS_IN_PORT || '80', 10);
@@ -33,6 +39,20 @@ const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '
 
 let xrayProc = null;
 let tuiInstance = null;
+
+const logBuffer = [];
+const MAX_LOG_BUFFER = 500;
+let webBroadcast = null;
+const currentStats = {};
+
+function addLog(msg) {
+  const stripped = msg.replace(/\{[^}]*\}/g, '');
+  const entry = { time: new Date().toISOString(), msg: stripped };
+  logBuffer.push(entry);
+  if (logBuffer.length > MAX_LOG_BUFFER) logBuffer.shift();
+  tuiInstance?.log(msg);              // TUI gets blessed-tagged version
+  if (webBroadcast) webBroadcast('log', entry); // Web gets clean version
+}
 
 let lastOut1Total = 0; let lastOut2Total = 0; let lastOut3Total = 0;
 
@@ -97,14 +117,14 @@ async function main() {
     });
     writeJsonPretty(XRAY_CONFIG_PATH, cfg);
     try {
-      xrayProc = await startXray({ xrayBin: XRAY_BIN, configPath: XRAY_CONFIG_PATH, log: tuiInstance?.log });
-      tuiInstance?.log(`Service STARTED successfully. [Route: ${activeOutbound}]`);
-    } catch (e) { tuiInstance?.log(`Start failed: ${e.message}`); }
+      xrayProc = await startXray({ xrayBin: XRAY_BIN, configPath: XRAY_CONFIG_PATH, log: addLog });
+      addLog(`Service STARTED successfully. [Route: ${activeOutbound}]`);
+    } catch (e) { addLog(`Start failed: ${e.message}`); }
   }
 
   async function stopService() {
     if (xrayProc) { await stopXray(xrayProc); xrayProc = null; }
-    tuiInstance?.log('Service STOPPED.');
+    addLog('Service STOPPED.');
   }
 
   async function reloadService() { await stopService(); await startService(); }
@@ -128,11 +148,35 @@ async function main() {
     }
   });
   tuiInstance = tui;
+
+  // ──── Web UI ────
+  const webCtx = {
+    state, adminUser: WEB_ADMIN_USER, adminPass: WEB_ADMIN_PASS,
+    usersPath: USERS_PATH, settingsPath: SETTINGS_PATH,
+    isRunning: () => !!xrayProc,
+    getActiveOutbound: () => activeOutbound,
+    setActiveOutbound: (v) => { activeOutbound = v; },
+    startService, stopService, reloadService,
+    addLog, logBuffer, currentStats,
+    outbounds: [
+      { tag: 'tun0-out', type: 'freedom', label: 'TUN0 Direct' },
+      { tag: 'failover-out-1', type: 'socks', label: 'SOCKS Proxy 1', host: SOCKS_OUT_1_HOST, port: SOCKS_OUT_1_PORT },
+      { tag: 'failover-out-2', type: 'socks', label: 'SOCKS Proxy 2', host: SOCKS_OUT_2_HOST, port: SOCKS_OUT_2_PORT },
+      { tag: 'failover-out-3', type: 'socks', label: 'SOCKS Proxy 3', host: SOCKS_OUT_3_HOST, port: SOCKS_OUT_3_PORT },
+    ]
+  };
+  const { app: webApp, broadcast } = createWebServer(webCtx);
+  webBroadcast = broadcast;
+  webApp.listen(WEB_PORT, '0.0.0.0', () => addLog(`Web UI available on port ${WEB_PORT}`));
+
   await startService();
 
   // لوپ مانیتورینگ سلامت (Failover) - هر ۱۵ ثانیه
   setInterval(async () => {
     if (isCheckingHealth) return;
+    const fo = loadSettings(SETTINGS_PATH);
+    if (fo.failoverEnabled === false) return;       // failover disabled from web UI
+    const requiredStable = fo.requiredStableChecks || REQUIRED_STABLE_CHECKS;
     isCheckingHealth = true;
     try {
       const tun0Ok = await isTun0Healthy();
@@ -140,13 +184,13 @@ async function main() {
       if (tun0Ok) {
         if (activeOutbound !== 'tun0-out') {
           tun0StableCount++;
-          if (tun0StableCount >= REQUIRED_STABLE_CHECKS) {
+          if (tun0StableCount >= requiredStable) {
             activeOutbound = 'tun0-out';
             tun0StableCount = 0;
-            tuiInstance?.log('{green-fg}tun0 is STABLE. Switching back to PRIMARY.{/}');
+            addLog('{green-fg}tun0 is STABLE. Switching back to PRIMARY.{/}');
             await reloadService();
           } else {
-            tuiInstance?.log(`tun0 is UP. Verifying stability (${tun0StableCount}/${REQUIRED_STABLE_CHECKS})...`);
+            addLog(`tun0 is UP. Verifying stability (${tun0StableCount}/${requiredStable})...`);
           }
         } else {
           tun0StableCount = 0;
@@ -157,10 +201,10 @@ async function main() {
           const socksOk = await isAnySocksHealthy();
           if (socksOk) {
             activeOutbound = 'socks-balancer';
-            tuiInstance?.log('{yellow-fg}tun0 DOWN. Switching to FAILOVER (SOCKS).{/}');
+            addLog('{yellow-fg}tun0 DOWN. Switching to FAILOVER (SOCKS).{/}');
             await reloadService();
           } else {
-            tuiInstance?.log('{red-fg}CRITICAL: tun0 DOWN, and all SOCKS also DEAD!{/}');
+            addLog('{red-fg}CRITICAL: tun0 DOWN, and all SOCKS also DEAD!{/}');
           }
         }
       }
@@ -227,22 +271,46 @@ async function main() {
 
           if (u.quotaGiB && u.usedBytes >= u.quotaGiB * (1024 ** 3)) {
              u.enabled = false; anyChange = true;
-             tuiInstance.log(`${u.username} disabled (Quota)`);
+             addLog(`${u.username} disabled (Quota)`);
           }
         }
 
-        if (anyChange) saveState(USERS_PATH, state);
+        if (anyChange) {
+          saveState(USERS_PATH, state);
+          if (webBroadcast) {
+            webBroadcast('users', state.users.map(u => {
+              const { _lastCheckTotal, ...clean } = u;
+              return { ...clean, usedGiB: parseFloat(((u.usedBytes || 0) / (1024 ** 3)).toFixed(4)) };
+            }));
+          }
+        }
         tui.setUsers(state.users.map(u => ({ ...u, usedGiB: bytesToGiB(u.usedBytes||0) })));
 
       } catch (e) { /* error silently */ }
     }
 
-    tui.setStats({
+    const statsObj = {
        cpu: cpuLoad, ram: usedMemPercent, totalTraffic: bytesToGiB(totalUsedBytes).toFixed(2),
        usersCount: state.users.length, xrayStatus: xrayProc ? 'RUNNING' : 'STOPPED',
        out1StatusText, out2StatusText, out3StatusText, out1GB, out2GB, out3GB,
        activeOutbound
-    });
+    };
+    tui.setStats(statsObj);
+
+    // Broadcast clean stats to Web UI
+    const webStats = {
+      cpu: cpuLoad, ram: usedMemPercent,
+      totalTraffic: bytesToGiB(totalUsedBytes).toFixed(2),
+      usersCount: state.users.length,
+      xrayStatus: xrayProc ? 'RUNNING' : 'STOPPED',
+      out1GB, out2GB, out3GB,
+      out1Active: out1StatusText.includes('ACTIVE'),
+      out2Active: out2StatusText.includes('ACTIVE'),
+      out3Active: out3StatusText.includes('ACTIVE'),
+      activeOutbound
+    };
+    Object.assign(currentStats, webStats);
+    if (webBroadcast) webBroadcast('stats', webStats);
 
   }, POLL_INTERVAL);
 }

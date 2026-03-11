@@ -17,7 +17,7 @@ function buildXrayConfig({ activeOutbound = 'tun0-out', socksInPort, vlessInPort
 
   const userRoutingRule = activeOutbound === 'socks-balancer'
     ? { type: 'field', inboundTag: ['socks-in', 'vless-in'], balancerTag: 'socks-balancer' }
-    : { type: 'field', inboundTag: ['socks-in', 'vless-in'], outboundTag: 'tun0-out' };
+    : { type: 'field', inboundTag: ['socks-in', 'vless-in'], outboundTag: activeOutbound };
 
   return {
     log: { loglevel: 'warning', access: '', error: '' },

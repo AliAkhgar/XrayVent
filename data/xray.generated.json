@@ -1,0 +1,155 @@
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "",
+    "error": ""
+  },
+  "api": {
+    "tag": "api-core",
+    "services": [
+      "StatsService",
+      "HandlerService"
+    ]
+  },
+  "stats": {},
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  "inbounds": [
+    {
+      "tag": "socks-in",
+      "port": 80,
+      "listen": "0.0.0.0",
+      "protocol": "socks",
+      "settings": {
+        "auth": "password",
+        "accounts": [],
+        "udp": true
+      }
+    },
+    {
+      "tag": "vless-in",
+      "port": 443,
+      "listen": "0.0.0.0",
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "none"
+      }
+    },
+    {
+      "tag": "api-in",
+      "port": 4343,
+      "listen": "127.0.0.1",
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      }
+    }
+  ],
+  "observatory": {
+    "subjectSelector": [
+      "failover-out-"
+    ],
+    "probeURL": "http://1.1.1.1/generate_204",
+    "probeInterval": "10s"
+  },
+  "outbounds": [
+    {
+      "tag": "tun0-out",
+      "protocol": "freedom",
+      "settings": {},
+      "streamSettings": {
+        "sockopt": {
+          "interface": "tun0"
+        }
+      }
+    },
+    {
+      "tag": "failover-out-1",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 2080
+          }
+        ]
+      }
+    },
+    {
+      "tag": "failover-out-2",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 2081
+          }
+        ]
+      }
+    },
+    {
+      "tag": "failover-out-3",
+      "protocol": "socks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 2082
+          }
+        ]
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom",
+      "settings": {}
+    }
+  ],
+  "routing": {
+    "balancers": [
+      {
+        "tag": "socks-balancer",
+        "selector": [
+          "failover-out-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ],
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api-in"
+        ],
+        "outboundTag": "api-core"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "socks-in",
+          "vless-in"
+        ],
+        "outboundTag": "tun0-out"
+      }
+    ]
+  }
+}
