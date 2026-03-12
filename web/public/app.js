@@ -87,7 +87,11 @@ function updateOverview(stats) {
 
 /* ════════════════  USERS  ════════════════ */
 async function loadUsers() {
-  try { users = await api('GET', '/api/users'); renderUsers(); }
+  try {
+    users = await api('GET', '/api/users');
+    users.sort((a, b) => a.username.localeCompare(b.username));
+    renderUsers();
+  }
   catch (e) { console.error('loadUsers', e); }
 }
 
@@ -294,6 +298,79 @@ function appendLog(entry) {
 function openModal()  { document.getElementById('modal-overlay').style.display = 'flex'; }
 function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; document.getElementById('addUserForm').reset(); }
 
+/* ════════════════  BULK CREATE  ════════════════ */
+function openBulkModal() {
+  document.getElementById('bulk-result').style.display = 'none';
+  document.getElementById('bulkForm').style.display = '';
+  document.getElementById('bulk-submit-btn').disabled = false;
+  document.getElementById('bulk-modal-overlay').style.display = 'flex';
+}
+function closeBulkModal() {
+  document.getElementById('bulk-modal-overlay').style.display = 'none';
+  document.getElementById('bulkForm').reset();
+  document.getElementById('bulk-result').style.display = 'none';
+}
+
+function generatePassword(len) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let pw = '';
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < len; i++) pw += chars[arr[i] % chars.length];
+  return pw;
+}
+
+async function bulkCreate() {
+  const form  = document.getElementById('bulkForm');
+  const prefix = form.prefix.value.trim();
+  const quota  = form.quota.value.trim();
+  const days   = form.days.value.trim();
+  const count  = parseInt(form.count.value, 10);
+  if (!prefix || !count || count < 1) return alert('Prefix and count are required');
+
+  const btn = document.getElementById('bulk-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+
+  let expiresAt = null;
+  if (days && !isNaN(days)) expiresAt = new Date(Date.now() + Number(days) * 86400000).toISOString();
+
+  const created = [];
+  const errors  = [];
+
+  for (let i = 0; i < count; i++) {
+    const suffix   = Math.floor(10000 + Math.random() * 90000).toString();
+    const username = prefix + suffix;
+    const password = generatePassword(8);
+    try {
+      await api('POST', '/api/users', { username, password, quotaGiB: quota || null, expiresAt });
+      created.push({ username, password });
+    } catch (e) {
+      errors.push(username + ': ' + e.message);
+    }
+  }
+
+  // Show results
+  const lines = created.map(u => u.username + '  |  ' + u.password).join('\n');
+  const header = 'Username       |  Password\n' + '-'.repeat(30) + '\n';
+  document.getElementById('bulk-result-text').value = header + lines + (errors.length ? '\n\nErrors:\n' + errors.join('\n') : '');
+  document.getElementById('bulk-result').style.display = '';
+  form.style.display = 'none';
+  btn.disabled = false;
+  btn.textContent = 'Create';
+
+  loadUsers();
+}
+
+function copyBulkResult() {
+  const text = document.getElementById('bulk-result-text').value;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('#bulk-result .btn-accent');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy All'; }, 1500);
+  });
+}
+
 /* ════════════════  SSE  ════════════════ */
 function connectSSE() {
   if (!token) return;
@@ -310,6 +387,7 @@ function connectSSE() {
   es.addEventListener('users', e => {
     try {
       users = JSON.parse(e.data);
+      users.sort((a, b) => a.username.localeCompare(b.username));
       if (currentSection === 'users') renderUsers();
     } catch {}
   });
