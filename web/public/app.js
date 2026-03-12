@@ -164,11 +164,7 @@ function renderUsers() {
   /* vless copy buttons */
   tbody.querySelectorAll('.btn-copy-vless').forEach(btn => {
     btn.addEventListener('click', () => {
-      copyText(btn.dataset.vless).then(() => {
-        const orig = btn.innerHTML;
-        btn.innerHTML = '&#10003; Copied';
-        setTimeout(() => { btn.innerHTML = orig; }, 1200);
-      });
+      showVlessModal(btn.dataset.vless);
     });
   });
 
@@ -332,6 +328,16 @@ function appendLog(entry) {
 /* ════════════════  MODAL  ════════════════ */
 function openModal()  { document.getElementById('modal-overlay').style.display = 'flex'; }
 function closeModal() { document.getElementById('modal-overlay').style.display = 'none'; document.getElementById('addUserForm').reset(); }
+
+function showVlessModal(uri) {
+  const ta = document.getElementById('vless-link-text');
+  ta.value = uri;
+  document.getElementById('vless-modal-overlay').style.display = 'flex';
+  setTimeout(() => ta.select(), 50);
+}
+function closeVlessModal() {
+  document.getElementById('vless-modal-overlay').style.display = 'none';
+}
 
 /* ════════════════  BULK CREATE  ════════════════ */
 function openBulkModal() {

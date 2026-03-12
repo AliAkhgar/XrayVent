@@ -212,6 +212,20 @@
     </div>
   </div>
 
+  <!-- ─── VLESS Link Modal ─── -->
+  <div id="vless-modal-overlay" class="modal-overlay" onclick="if(event.target===this)closeVlessModal()">
+    <div class="modal" style="max-width:600px">
+      <div class="modal-header">
+        <h3>VLESS Link</h3>
+        <button class="btn-icon" onclick="closeVlessModal()">&#10005;</button>
+      </div>
+      <div class="form-group">
+        <label>Select and copy the link below:</label>
+        <textarea id="vless-link-text" readonly onclick="this.select()" style="width:100%; height:80px; background:var(--bg); color:var(--accent); border:1px solid var(--border); border-radius:6px; padding:10px; font-family:'SF Mono',Consolas,monospace; font-size:12px; word-break:break-all; resize:vertical"></textarea>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
