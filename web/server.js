@@ -62,7 +62,11 @@ function createWebServer(ctx) {
   app.get('/api/validate', auth, (_req, res) => res.json({ valid: true }));
 
   // ── Status ──
-  app.get('/api/status', auth, (_req, res) => res.json(ctx.currentStats));
+  app.get('/api/status', auth, (_req, res) => res.json({
+    ...ctx.currentStats,
+    serverIp: ctx.serverIp,
+    vlessPort: ctx.vlessPort
+  }));
 
   // ── Users ──
   app.get('/api/users', auth, (_req, res) => {

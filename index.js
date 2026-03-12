@@ -25,6 +25,7 @@ const WEB_ADMIN_PASS = process.env.WEB_ADMIN_PASS || 'admin';
 const XRAY_BIN = process.env.XRAY_BIN || '/root/goduser/xray_user';
 const SOCKS_IN_PORT = parseInt(process.env.SOCKS_IN_PORT || '80', 10);
 const VLESS_IN_PORT = parseInt(process.env.VLESS_IN_PORT || '443', 10);
+const SERVER_IP = process.env.SERVER_IP || '0.0.0.0';
 const XRAY_API_SERVER = process.env.XRAY_API_SERVER || '127.0.0.1:4343';
 
 const SOCKS_OUT_1_HOST = process.env.SOCKS_OUT_1_HOST || '127.0.0.1';
@@ -158,6 +159,7 @@ async function main() {
     setActiveOutbound: (v) => { activeOutbound = v; },
     startService, stopService, reloadService,
     addLog, logBuffer, currentStats,
+    serverIp: SERVER_IP, vlessPort: VLESS_IN_PORT,
     outbounds: [
       { tag: 'tun0-out', type: 'freedom', label: 'TUN0 Direct' },
       { tag: 'failover-out-1', type: 'socks', label: 'SOCKS Proxy 1', host: SOCKS_OUT_1_HOST, port: SOCKS_OUT_1_PORT },

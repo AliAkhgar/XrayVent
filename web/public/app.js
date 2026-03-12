@@ -9,6 +9,8 @@ let currentSection = 'overview';
 let users          = [];
 let tunnelData     = {};
 let logEntries     = [];
+let serverIp       = '';
+let vlessPort      = 443;
 
 /* ──── API helper ──── */
 async function api(method, url, body) {
@@ -57,8 +59,14 @@ function fmtDate(s) {
 }
 
 /* ════════════════  OVERVIEW  ════════════════ */
+function vlessUri(username, password) {
+  return 'vless://' + username + '-' + password + '@' + serverIp + ':' + vlessPort + '?security=none&encryption=none&type=tcp&headerType=none#GodUser-VLESS';
+}
+
 function updateOverview(stats) {
   if (!stats || typeof stats !== 'object') return;
+  if (stats.serverIp) serverIp = stats.serverIp;
+  if (stats.vlessPort) vlessPort = stats.vlessPort;
   const $ = id => document.getElementById(id);
 
   $('stat-cpu').textContent     = (stats.cpu || '—') + '%';
@@ -119,6 +127,7 @@ function renderUsers() {
       '<td>' + fmtDate(u.expiresAt) + '</td>' +
       '<td>' + fmtDate(u.lastSeenAt) + '</td>' +
       '<td class="actions">' +
+        '<button class="btn btn-sm btn-outline btn-copy-vless" data-vless="' + esc(vlessUri(u.username, u.password)) + '" title="Copy VLESS link">&#128279; Link</button>' +
         '<button class="btn btn-sm btn-outline" data-action="toggle" data-user="' + esc(u.username) + '">' + (on ? 'Disable' : 'Enable') + '</button>' +
         '<button class="btn btn-sm btn-danger" data-action="delete" data-user="' + esc(u.username) + '">Delete</button>' +
       '</td>' +
@@ -134,6 +143,17 @@ function renderUsers() {
       const hidden = plain.style.display === 'none';
       mask.style.display  = hidden ? 'none' : '';
       plain.style.display = hidden ? '' : 'none';
+    });
+  });
+
+  /* vless copy buttons */
+  tbody.querySelectorAll('.btn-copy-vless').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.vless).then(() => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '&#10003; Copied';
+        setTimeout(() => { btn.innerHTML = orig; }, 1200);
+      });
     });
   });
 
@@ -351,8 +371,8 @@ async function bulkCreate() {
   }
 
   // Show results
-  const lines = created.map(u => u.username + '  |  ' + u.password).join('\n');
-  const header = 'Username       |  Password\n' + '-'.repeat(30) + '\n';
+  const lines = created.map(u => u.username + '  |  ' + u.password + '  |  ' + vlessUri(u.username, u.password)).join('\n');
+  const header = 'Username  |  Password  |  VLESS URI\n' + '-'.repeat(60) + '\n';
   document.getElementById('bulk-result-text').value = header + lines + (errors.length ? '\n\nErrors:\n' + errors.join('\n') : '');
   document.getElementById('bulk-result').style.display = '';
   form.style.display = 'none';
