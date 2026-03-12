@@ -58,6 +58,21 @@ function fmtDate(s) {
   return isNaN(d.getTime()) ? '—' : d.toISOString().slice(0, 16).replace('T', ' ');
 }
 
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+  return Promise.resolve();
+}
+
 /* ════════════════  OVERVIEW  ════════════════ */
 function vlessUri(username, password) {
   return 'vless://' + username + '-' + password + '@' + serverIp + ':' + vlessPort + '?security=none&encryption=none&type=tcp&headerType=none#GodUser-VLESS';
@@ -149,7 +164,7 @@ function renderUsers() {
   /* vless copy buttons */
   tbody.querySelectorAll('.btn-copy-vless').forEach(btn => {
     btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(btn.dataset.vless).then(() => {
+      copyText(btn.dataset.vless).then(() => {
         const orig = btn.innerHTML;
         btn.innerHTML = '&#10003; Copied';
         setTimeout(() => { btn.innerHTML = orig; }, 1200);
@@ -384,7 +399,7 @@ async function bulkCreate() {
 
 function copyBulkResult() {
   const text = document.getElementById('bulk-result-text').value;
-  navigator.clipboard.writeText(text).then(() => {
+  copyText(text).then(() => {
     const btn = document.querySelector('#bulk-result .btn-accent');
     btn.textContent = 'Copied!';
     setTimeout(() => { btn.textContent = 'Copy All'; }, 1500);
